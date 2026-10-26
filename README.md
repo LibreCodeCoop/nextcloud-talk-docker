@@ -9,7 +9,7 @@ Este guia explica como configurar um Backend de Alto Desempenho (HPB) para o Nex
 
 ### Ansible
 
-Automação de exemplo para deploy do HPB. Adapte a playbook ao seu ambiente e às suas credenciais.
+O papel Ansible legado ainda usa Janus 1.3.1 e um comando incompatível com a imagem atual. Veja a [correção pendente no ansible-docker](https://github.com/LibreCodeCoop/ansible-docker/issues/7). Não aplique esse papel à imagem 1.4.3 sem as adaptações e testes necessários; use os exemplos de Compose abaixo.
 ### Arquitetura do sistema
 
 O HPB consiste em três componentes principais:
