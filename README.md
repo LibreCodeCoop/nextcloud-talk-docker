@@ -4,9 +4,12 @@
 
 Este guia explica como configurar um Backend de Alto Desempenho (HPB) para o Nextcloud Talk usando contêineres Docker. O HPB melhora significativamente a performance de videoconferências com múltiplos participantes.
 
+**Imagem Janus mantida pela LibreCode:** [`ghcr.io/librecodecoop/janus` no GHCR](https://github.com/LibreCodeCoop/janus-docker/pkgs/container/janus), com [Dockerfile de origem](https://github.com/LibreCodeCoop/janus-docker/blob/main/Dockerfile) e [releases versionadas](https://github.com/LibreCodeCoop/janus-docker/releases). Para produção, use uma tag aprovada com digest OCI, não `latest`.
+
+
 ### Ansible
 
-Automação de exemplo para deploy do HPB. Adapte a playbook ao seu ambiente e às suas credenciais.
+A automação Ansible está no [papel `nextcloud-talk`](https://github.com/LibreCodeCoop/ansible-docker/tree/main/roles/nextcloud-talk). A compatibilidade com a imagem 1.4.3 está documentada na [issue #7](https://github.com/LibreCodeCoop/ansible-docker/issues/7) e no [PR #8](https://github.com/LibreCodeCoop/ansible-docker/pull/8). Confira se a atualização já foi integrada e consulte as variáveis antes de executar; checkouts antigos da automação usam Janus 1.3.1 e comandos incompatíveis.
 ### Arquitetura do sistema
 
 O HPB consiste em três componentes principais:
@@ -236,7 +239,7 @@ cluster {
       - ./volumes/hpb/ssl/:/etc/nginx/ssl/
     restart: unless-stopped
     environment:
-      - JANUS_URL=janus.example.com
+      - JANUS_URL=ws://janus:8188/
       - USE_JANUS=1
       - VIRTUAL_HOST=talk-signaling.example.com
       - LETSENCRYPT_HOST=talk-signaling.example.com
@@ -269,41 +272,80 @@ curl -i https://talk-signaling.example.com/api/v1/welcome
 
 ## Etapa 4: Configuração do servidor Janus
 
-### Configuração do contêiner
+A imagem independente do Janus é publicada no [GHCR da LibreCode](https://github.com/LibreCodeCoop/janus-docker/pkgs/container/janus); o código-fonte está em [LibreCodeCoop/janus-docker](https://github.com/LibreCodeCoop/janus-docker) e as versões aprovadas estão nas [releases](https://github.com/LibreCodeCoop/janus-docker/releases).
+
+**Exemplo validado em 25/10/2026** (consulte as releases para obter uma referência mais recente):
+
 ```yaml
 services:
   janus:
-    image: ghcr.io/librecodecoop/janus:1.3.1
-    command: ["janus", "--full-trickle"]
-    # Se o servidor tiver um endereço privado, descomente a linha abaixo e substitua pelo seu IP público.
-    # command: ["janus", "--full-trickle", "--nat-1-1=SEU_IP_PUBLICO"]
+    image: ghcr.io/librecodecoop/janus:1.4.3-r1@sha256:7d9c1bd28bdbc7702de924ed8a676f5c1f11afa3abc888654d8d4fc8b78a00d2
+    # A imagem já possui ENTRYPOINT /usr/local/bin/janus.
+    command: ["--full-trickle", "--nat-1-1=${PUBLIC_IP:?Informe o IPv4 publico}"]
+    networks:
+      - internal
     ports:
       - "20000-20100:20000-20100/udp"
     restart: unless-stopped
     volumes:
       - ./volumes/janus/config/janus.jcfg:/usr/local/etc/janus/janus.jcfg:ro
       - ./volumes/janus/config/janus.transport.websockets.jcfg:/usr/local/etc/janus/janus.transport.websockets.jcfg:ro
+      - ./volumes/janus/config/janus.eventhandler.wsevh.jcfg:/usr/local/etc/janus/janus.eventhandler.wsevh.jcfg:ro
+
+networks:
+  internal:
+    driver: bridge
 ```
 
-### Arquivos de configuração
-`volumes/janus/config/janus.jcfg`
-```cfg
+A rede `internal` deve ser compartilhada pelo Janus e pelo `spreedbackend`. Mantenha o WebSocket `8188/tcp` acessível somente nessa rede; a sinalização utiliza `ws://janus:8188/`.
+
+Crie antes de executar o Compose:
+
+```bash
+mkdir -p volumes/janus/config
+```
+
+`volumes/janus/config/janus.jcfg`:
+
+```text
 media: {
   rtp_port_range = "20000-20100"
 }
-```
-
-`volumes/janus/config/janus.transport.websockets.jcfg`
-```cfg
-general: {
-  ws = true
-  ws_port = 8188
+events: {
+  broadcast = true
 }
 ```
 
-Se você publicar o HTTP API do Janus para testes, o endpoint padrão continua sendo `http://<host>:8088/janus/info`. No ambiente interno, o signaling usa `ws://janus:8188/`.
+`volumes/janus/config/janus.transport.websockets.jcfg`:
 
----
+```text
+general: {
+  ws = true
+  ws_port = 8188
+  wss = false
+}
+admin: {
+  admin_ws = false
+}
+```
+
+`volumes/janus/config/janus.eventhandler.wsevh.jcfg`:
+
+```text
+general: {
+  enabled = true
+  events = "handles,media,webrtc"
+  grouping = true
+  backend = "ws://spreedbackend:8080/spreed"
+  subprotocol = "janus-events"
+  events_cap_on_reconnect = 500
+  events_max_queue = 2000
+}
+```
+
+**Importante:** use o arquivo real de eventos `janus.eventhandler.wsevh.jcfg`, não o antigo `janus.eventhandler.sampleevh.jcfg`. Não monte um arquivo inexistente: o Docker pode criar um diretório no host. A imagem nova já inclui os módulos VideoRoom, WebSocket e `wsevh`, sem necessidade de compilação local.
+
+Valide com `docker compose config --quiet` e `docker compose logs --tail=100 janus`. Testes de conexão de sinalização não substituem áudio, vídeo, compartilhamento de tela e TURN entre usuários em redes distintas.
 
 ## Etapa 5: Configuração no Nextcloud
 
