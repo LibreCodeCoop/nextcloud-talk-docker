@@ -9,7 +9,7 @@ Este guia explica como configurar um Backend de Alto Desempenho (HPB) para o Nex
 
 ### Ansible
 
-O papel Ansible legado ainda usa Janus 1.3.1 e um comando incompatível com a imagem atual. Veja a [correção pendente no ansible-docker](https://github.com/LibreCodeCoop/ansible-docker/issues/7). Não aplique esse papel à imagem 1.4.3 sem as adaptações e testes necessários; use os exemplos de Compose abaixo.
+A automação Ansible está no [papel `nextcloud-talk`](https://github.com/LibreCodeCoop/ansible-docker/tree/main/roles/nextcloud-talk). A compatibilidade com a imagem 1.4.3 está documentada na [issue #7](https://github.com/LibreCodeCoop/ansible-docker/issues/7) e no [PR #8](https://github.com/LibreCodeCoop/ansible-docker/pull/8). Confira se a atualização já foi integrada e consulte as variáveis antes de executar; checkouts antigos da automação usam Janus 1.3.1 e comandos incompatíveis.
 ### Arquitetura do sistema
 
 O HPB consiste em três componentes principais:
